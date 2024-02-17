@@ -1,0 +1,6 @@
+{
+  "bookTitle": "Test title",
+  "cover": false,
+  "authorFirstName": "TestName",
+  "authorLastName": "TestSurname"
+}
