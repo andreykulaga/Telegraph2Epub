@@ -211,7 +211,14 @@ public class Main {
                 conn.setRequestMethod("GET");
 
                 int responseCode = conn.getResponseCode();
-                if (responseCode == HttpURLConnection.HTTP_OK) {
+                //check that type of image is supported by epub from the box
+                String contentType = conn.getHeaderField("Content-Type");
+                boolean contentTypeSupportedByEpub = contentType.equalsIgnoreCase("image/png") ||
+                        contentType.equalsIgnoreCase("image/jpeg") ||
+                        contentType.equalsIgnoreCase("image/gif") ||
+                        contentType.equalsIgnoreCase("image/svg+xml");
+
+                if (responseCode == HttpURLConnection.HTTP_OK && contentTypeSupportedByEpub) {
                     InputStream inputStream = conn.getInputStream();
 
                     String fileName = attrs.getString("src").substring(6); // index 6 because starts with "/file/
