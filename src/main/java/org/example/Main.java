@@ -12,6 +12,7 @@ import org.json.JSONObject;
 import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 
 public class Main {
     public static void main(String[] args) {
@@ -70,11 +71,27 @@ public class Main {
             }
             reader.close();
 
-// Create EpubWriter
+            //add all pictures
+            File folder = new File("src/main/resources");
+            File[] files = folder.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    if (!file.getName().endsWith(".html")) {
+                        InputStream inputStream = new FileInputStream(file);
+                        Resource resource = new Resource(inputStream, file.getName());
+                        book.addResource(resource);
+                        file.deleteOnExit();
+                    }
+                }
+            }
+
+            // Create EpubWriter
             EpubWriter epubWriter = new EpubWriter();
 
-// Write the Book as Epub
-            epubWriter.write(book, new FileOutputStream(bookTitle + " - " + authorFirstName + " " + authorLastName + ".epub"));
+            // Write the Book as Epub
+            FileOutputStream outputStream = new FileOutputStream(bookTitle + " - " + authorFirstName + " " + authorLastName + ".epub");
+            epubWriter.write(book, outputStream);
+            outputStream.close();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -100,7 +117,7 @@ public class Main {
 
             int responseCode = conn.getResponseCode();
             if (responseCode == HttpURLConnection.HTTP_OK) {
-                try (BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"))) {
+                try (BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
                     StringBuilder response = new StringBuilder();
                     String inputLine;
 
@@ -125,14 +142,11 @@ public class Main {
                     String htmlContent = htmlContentBuilder.toString();
 
 
-                    String titleWithReplacements = title;
-                    String outputFilePath = outputDirectory + titleWithReplacements + ".html";
+                    String outputFilePath = outputDirectory + title + ".html";
                     try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(outputFilePath)))) {
                         writer.write(htmlContent);
                     }
-
-                    System.out.println("HTML content saved to: " + outputFilePath);
-                    output = titleWithReplacements;
+                    output = title;
                 }
             } else {
                 System.out.println("Failed to fetch HTML content. Response code: " + responseCode);
@@ -152,27 +166,6 @@ public class Main {
                 .replaceAll("'", "&apos;");
     }
 
-//    private static void processChildren(StringBuilder htmlContentBuilder, JSONArray children) {
-//        for (int j = 0; j < children.length(); j++) {
-//            Object child = children.get(j);
-//            if (child instanceof String) {
-//                // Escape special characters
-//                String escapedText = escapeHtml((String) child);
-//                htmlContentBuilder.append(escapedText);
-//            } else if (child instanceof JSONObject) {
-//                JSONObject childObj = (JSONObject) child;
-//                String tag = childObj.optString("tag");
-//                String text = childObj.optString("text");
-//                if (tag != null && !tag.isEmpty() && text != null && !text.isEmpty()) {
-//                    htmlContentBuilder.append("<").append(tag).append(">");
-//                    // Escape special characters
-//                    String escapedText = escapeHtml(text);
-//                    htmlContentBuilder.append(escapedText);
-//                    htmlContentBuilder.append("</").append(tag).append(">");
-//                }
-//            }
-//        }
-//    }
 
     private static void processContentArray(StringBuilder htmlContentBuilder, JSONArray contentArray) {
         if (contentArray != null) {
@@ -181,73 +174,70 @@ public class Main {
                     // Escape special characters
                     String escapedText = escapeHtml((String) contentObj);
                     htmlContentBuilder.append(escapedText);
-                } else if (contentObj instanceof JSONObject) {
-                    JSONObject childObj = (JSONObject) contentObj;
+                } else if (contentObj instanceof JSONObject childObj) {
                     String childTag = childObj.optString("tag");
                     JSONArray grandChildren = childObj.optJSONArray("children");
 
-                    if (childTag != null && !childTag.isEmpty()) {
-                        htmlContentBuilder.append("<").append(childTag).append(">");
-                    }
-                    processContentArray(htmlContentBuilder, grandChildren);
+                    //image and video processing
+                    if (childTag.equalsIgnoreCase("img") || childTag.equalsIgnoreCase("video")) {
+                        processImageOrVideo(htmlContentBuilder, childObj);
+                    } else {
+                        //all other tags
+                        if (!childTag.isEmpty()) {
+                            htmlContentBuilder.append("<").append(childTag).append(">");
+                        }
+                        processContentArray(htmlContentBuilder, grandChildren);
 
-                    if (childTag != null && !childTag.isEmpty()) {
-                        htmlContentBuilder.append("</").append(childTag).append(">");
+                        if (!childTag.isEmpty()) {
+                            htmlContentBuilder.append("</").append(childTag).append(">");
+                        }
                     }
+
                 }
             }
         }
     }
 
-//    private static void processChildren(StringBuilder htmlContentBuilder, JSONArray children, String tag) {
-//        for (int j = 0; j < children.length(); j++) {
-//            Object child = children.get(j);
-//            if (child instanceof String) {
-//                // Escape special characters
-//                String escapedText = escapeHtml((String) child);
-//                if (tag != null && !tag.isEmpty()) {
-//                    htmlContentBuilder.append("<").append(tag).append(">");
-//                    htmlContentBuilder.append(escapedText);
-//                    htmlContentBuilder.append("</").append(tag).append(">");
-//                } else {
-//                    htmlContentBuilder.append(escapedText);
-//                }
-//
-//            } else if (child instanceof JSONObject) {
-//                JSONObject childObj = (JSONObject) child;
-//                String childTag = childObj.optString("tag");
-//                JSONArray grandChildren = childObj.optJSONArray("children");
-//                processChildren(htmlContentBuilder, grandChildren, childTag);
-////                String text = childObj.optString("text");
-////                if (tag != null && !tag.isEmpty()) {
-////                    htmlContentBuilder.append("<").append(tag).append(">");
-////                    // Escape special characters
-////                    String escapedText = escapeHtml(text);
-////                    htmlContentBuilder.append(escapedText);
-////                    htmlContentBuilder.append("</").append(tag).append(">");
-////                }
-//            }
-//        }
-//    }
+    private static void processImageOrVideo(StringBuilder htmlContentBuilder, JSONObject childObj) {
+        String childTag = childObj.optString("tag");
+        if (childTag.equalsIgnoreCase("img")) {
+            JSONObject attrs = childObj.getJSONObject("attrs");
+            String sourceUrl = "https://telegra.ph".concat(attrs.getString("src"));
 
-//    private static void processChildren(StringBuilder htmlContentBuilder, JSONArray children) {
-//        htmlContentBuilder.append("<p>");
-//                            for (int j = 0; j < children.length(); j++) {
-//                                Object child = children.get(j);
-//                                if (child instanceof String) {
-//                                    // Escape special characters
-//                                    String escapedText = escapeHtml((String) child);
-//                                    htmlContentBuilder.append(escapedText);
-//                                } else if (child instanceof JSONObject) {
-//                                    JSONObject childObj = (JSONObject) child;
-//                                    String text = childObj.optString("text");
-//                                    if (text != null && !text.isEmpty()) {
-//                                        // Escape special characters
-//                                        String escapedText = escapeHtml(text);
-//                                        htmlContentBuilder.append("<em>").append(escapedText).append("</em>");
-//                                    }
-//                                }
-//                            }
-//                            htmlContentBuilder.append("</p>\n");
-//    }
+            URL url;
+            try {
+                url = new URL(sourceUrl);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("GET");
+
+                int responseCode = conn.getResponseCode();
+                if (responseCode == HttpURLConnection.HTTP_OK) {
+                    InputStream inputStream = conn.getInputStream();
+
+                    String fileName = attrs.getString("src").substring(6); // index 6 because starts with "/file/
+
+                    OutputStream outputStream = new FileOutputStream("src/main/resources/" + fileName);
+
+                    byte[] buffer = new byte[2048];
+                    int length;
+
+                    while ((length = inputStream.read(buffer)) != -1) {
+                        outputStream.write(buffer, 0, length);
+                    }
+
+                    inputStream.close();
+                    outputStream.close();
+
+                    //add to resulted HTML
+                    htmlContentBuilder.append("<img src=\"").append(fileName).append("\" alt=\"image\" />");
+                } else {
+                    System.out.println("Failed to fetch image. Response code: " + responseCode);
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        } else {
+            htmlContentBuilder.append("<p>").append(childTag).append(" is not supported").append("</p>");
+        }
+    }
 }
