@@ -13,6 +13,11 @@ import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Random;
 
 public class Main {
     public static void main(String[] args) {
@@ -52,6 +57,8 @@ public class Main {
             }
 
 
+            String folderPath = getFolderForTempFiles();
+
             //read links to chapters
             BufferedReader reader = new BufferedReader(new FileReader("links.txt"));
             String urlString;
@@ -60,19 +67,21 @@ public class Main {
                         .concat(urlString.substring(19))
                         .concat("?return_content=true");
 
-                String title = saveHTMLContentFromTelegraphAPI(apiUrl, "src/main/resources/");
 
-                addHtmlFile(book, title, "src/main/resources/".concat(title).concat(".html"));
+                String title = saveHTMLContentFromTelegraphAPI(apiUrl, folderPath);
+
+                addHtmlFile(book, title, folderPath.concat("/").concat(title).concat(".html"));
 
                 //delete chapters
-                File file = new File("src/main/resources/".concat(title).concat(".html"));
-                file.deleteOnExit();
+                File file = new File(folderPath.concat("/").concat(title).concat(".html"));
+                file.delete();
+
 
             }
             reader.close();
 
             //add all pictures
-            File folder = new File("src/main/resources");
+            File folder = new File(folderPath);
             File[] files = folder.listFiles();
             if (files != null) {
                 for (File file : files) {
@@ -80,9 +89,20 @@ public class Main {
                         InputStream inputStream = new FileInputStream(file);
                         Resource resource = new Resource(inputStream, file.getName());
                         book.addResource(resource);
-                        file.deleteOnExit();
+                        file.delete();
                     }
                 }
+            }
+
+
+            // Delete temp folder
+            Path tempFolder = Paths.get(folderPath);
+            try {
+                // Delete the folder using Files.delete() method
+                Files.delete(tempFolder);
+                System.out.println("Temporary folder deleted successfully.");
+            } catch (IOException e) {
+                System.err.println("Failed to delete Temporary folder: " + e.getMessage());
             }
 
             // Create EpubWriter
@@ -95,6 +115,29 @@ public class Main {
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    private static String getFolderForTempFiles() {
+        // Get the system's temporary directory
+        String tempDir = System.getProperty("java.io.tmpdir");
+        Random random = new Random();
+
+        // Specify the path of the folder to be created
+        String folderPath = tempDir + "telegraph2epub" + random.nextInt(100);
+
+        // Create a Path object representing the folder
+        Path folder = Paths.get(folderPath);
+
+        try {
+            // Create the folder using Files.createDirectory()
+            Files.createDirectory(folder);
+            System.out.println("Temporary folder created successfully.");
+        } catch (FileAlreadyExistsException e) {
+            System.err.println("Temporary folder already exists.");
+        } catch (IOException e) {
+            System.err.println("Failed to create Temporary folder: " + e.getMessage());
+        }
+        return folderPath;
     }
 
     private static void addHtmlFile(Book book, String title, String filePath) throws IOException {
@@ -135,14 +178,14 @@ public class Main {
                     htmlContentBuilder.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd\">\n<html xmlns=\"http://www.w3.org/1999/xhtml\">\n<head>\n<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />\n<title>")
                             .append(title).append("</title>\n</head>\n<body>\n<h1>").append(title).append("</h1>\n");
 
-                    processContentArray(htmlContentBuilder, contentArray);
+                    processContentArray(htmlContentBuilder, contentArray, outputDirectory);
 
                     htmlContentBuilder.append("</body>\n</html>");
 
                     String htmlContent = htmlContentBuilder.toString();
 
 
-                    String outputFilePath = outputDirectory + title + ".html";
+                    String outputFilePath = outputDirectory + "/" + title + ".html";
                     try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(outputFilePath)))) {
                         writer.write(htmlContent);
                     }
@@ -167,7 +210,7 @@ public class Main {
     }
 
 
-    private static void processContentArray(StringBuilder htmlContentBuilder, JSONArray contentArray) {
+    private static void processContentArray(StringBuilder htmlContentBuilder, JSONArray contentArray, String folderPath) {
         if (contentArray != null) {
             for (Object contentObj:contentArray) {
                 if (contentObj instanceof String) {
@@ -180,13 +223,13 @@ public class Main {
 
                     //image and video processing
                     if (childTag.equalsIgnoreCase("img") || childTag.equalsIgnoreCase("video")) {
-                        processImageOrVideo(htmlContentBuilder, childObj);
+                        processImageOrVideo(htmlContentBuilder, childObj, folderPath);
                     } else {
                         //all other tags
                         if (!childTag.isEmpty()) {
                             htmlContentBuilder.append("<").append(childTag).append(">");
                         }
-                        processContentArray(htmlContentBuilder, grandChildren);
+                        processContentArray(htmlContentBuilder, grandChildren, folderPath);
 
                         if (!childTag.isEmpty()) {
                             htmlContentBuilder.append("</").append(childTag).append(">");
@@ -198,7 +241,7 @@ public class Main {
         }
     }
 
-    private static void processImageOrVideo(StringBuilder htmlContentBuilder, JSONObject childObj) {
+    private static void processImageOrVideo(StringBuilder htmlContentBuilder, JSONObject childObj, String folderPath) {
         String childTag = childObj.optString("tag");
         if (childTag.equalsIgnoreCase("img")) {
             JSONObject attrs = childObj.getJSONObject("attrs");
@@ -223,7 +266,7 @@ public class Main {
 
                     String fileName = attrs.getString("src").substring(6); // index 6 because starts with "/file/
 
-                    OutputStream outputStream = new FileOutputStream("src/main/resources/" + fileName);
+                    OutputStream outputStream = new FileOutputStream(folderPath + "/" + fileName);
 
                     byte[] buffer = new byte[2048];
                     int length;
