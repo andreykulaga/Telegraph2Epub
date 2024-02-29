@@ -36,6 +36,7 @@ public class Main {
             JSONObject jsonObject = new JSONObject(jsonString.toString());
             String bookTitle = jsonObject.getString("bookTitle");
             boolean doWeNeedToAddCover = jsonObject.getBoolean("cover");
+            boolean doWeNeedToSaveImages = jsonObject.getBoolean("images");
             String authorFirstName = jsonObject.getString("authorFirstName");
             String authorLastName = jsonObject.getString("authorLastName");
 
@@ -68,7 +69,7 @@ public class Main {
                         .concat("?return_content=true");
 
 
-                String title = saveHTMLContentFromTelegraphAPI(apiUrl, folderPath);
+                String title = saveHTMLContentFromTelegraphAPI(apiUrl, folderPath, doWeNeedToSaveImages);
 
                 addHtmlFile(book, title, folderPath.concat("/").concat(title).concat(".html"));
 
@@ -86,9 +87,12 @@ public class Main {
             if (files != null) {
                 for (File file : files) {
                     if (!file.getName().endsWith(".html")) {
-                        InputStream inputStream = new FileInputStream(file);
-                        Resource resource = new Resource(inputStream, file.getName());
-                        book.addResource(resource);
+                        if (doWeNeedToSaveImages) {
+                            InputStream inputStream = new FileInputStream(file);
+                            Resource resource = new Resource(inputStream, file.getName());
+                            book.addResource(resource);
+                            inputStream.close();
+                        }
                         file.delete();
                     }
                 }
@@ -151,7 +155,7 @@ public class Main {
 
 
 
-    public static String saveHTMLContentFromTelegraphAPI(String apiUrl, String outputDirectory) {
+    public static String saveHTMLContentFromTelegraphAPI(String apiUrl, String outputDirectory, boolean doWeNeedToSaveImages) {
         String output = "error";
         try {
             URL url = new URL(apiUrl);
@@ -178,7 +182,7 @@ public class Main {
                     htmlContentBuilder.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd\">\n<html xmlns=\"http://www.w3.org/1999/xhtml\">\n<head>\n<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />\n<title>")
                             .append(title).append("</title>\n</head>\n<body>\n<h1>").append(title).append("</h1>\n");
 
-                    processContentArray(htmlContentBuilder, contentArray, outputDirectory);
+                    processContentArray(htmlContentBuilder, contentArray, outputDirectory, doWeNeedToSaveImages);
 
                     htmlContentBuilder.append("</body>\n</html>");
 
@@ -210,7 +214,7 @@ public class Main {
     }
 
 
-    private static void processContentArray(StringBuilder htmlContentBuilder, JSONArray contentArray, String folderPath) {
+    private static void processContentArray(StringBuilder htmlContentBuilder, JSONArray contentArray, String folderPath, boolean doWeNeedToSaveImages) {
         if (contentArray != null) {
             for (Object contentObj:contentArray) {
                 if (contentObj instanceof String) {
@@ -222,14 +226,14 @@ public class Main {
                     JSONArray grandChildren = childObj.optJSONArray("children");
 
                     //image and video processing
-                    if (childTag.equalsIgnoreCase("img") || childTag.equalsIgnoreCase("video")) {
+                    if ((childTag.equalsIgnoreCase("img") || childTag.equalsIgnoreCase("video")) && doWeNeedToSaveImages) {
                         processImageOrVideo(htmlContentBuilder, childObj, folderPath);
                     } else {
                         //all other tags
                         if (!childTag.isEmpty()) {
                             htmlContentBuilder.append("<").append(childTag).append(">");
                         }
-                        processContentArray(htmlContentBuilder, grandChildren, folderPath);
+                        processContentArray(htmlContentBuilder, grandChildren, folderPath, doWeNeedToSaveImages);
 
                         if (!childTag.isEmpty()) {
                             htmlContentBuilder.append("</").append(childTag).append(">");
